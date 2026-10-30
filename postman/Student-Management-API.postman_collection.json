@@ -1,0 +1,171 @@
+{
+  "info": {
+    "_postman_id": "2e9f1fb3-11d1-4a43-92a5-6843381f8949",
+    "name": "Campusly Student Management API",
+    "description": "Authenticated REST API examples for Campusly. Run Auth status, then first-time setup or sign in. Postman retains the session cookie automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:5000" },
+    { "key": "csrfToken", "value": "" },
+    { "key": "adminName", "value": "" },
+    { "key": "adminEmail", "value": "" },
+    { "key": "adminPassword", "value": "" },
+    { "key": "courseId", "value": "" },
+    { "key": "studentId", "value": "" },
+    { "key": "gradeId", "value": "" },
+    { "key": "feeId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth status",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/auth/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["var body = pm.response.json(); pm.collectionVariables.set('csrfToken', body.csrf_token); pm.test('Auth status is available', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "First-time administrator setup",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{adminName}}\",\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+        "url": "{{baseUrl}}/api/auth/setup"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["if (pm.response.code === 201) { pm.collectionVariables.set('csrfToken', pm.response.json().csrf_token); } pm.test('Administrator setup completed (or already completed)', function () { pm.expect([201, 409]).to.include(pm.response.code); });"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "Sign in",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}" },
+        "url": "{{baseUrl}}/api/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["if (pm.response.code === 200) { pm.collectionVariables.set('csrfToken', pm.response.json().csrf_token); } pm.test('Administrator is signed in', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "Health check",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/health" }
+    },
+    {
+      "name": "Courses",
+      "item": [
+        {
+          "name": "List courses",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/courses" }
+        },
+        {
+          "name": "Create course",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Computer Science\",\n  \"description\": \"Computing and software engineering\"\n}" },
+            "url": "{{baseUrl}}/api/courses"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["if (pm.response.code === 201) { pm.collectionVariables.set('courseId', pm.response.json().course.id); } pm.test('Course created or already exists', function () { pm.expect([201, 409]).to.include(pm.response.code); });"], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Students",
+      "item": [
+        {
+          "name": "List students",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/students" }
+        },
+        {
+          "name": "Create student",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"first_name\": \"Taylor\",\n  \"last_name\": \"Reed\",\n  \"email\": \"taylor.reed@example.com\",\n  \"phone\": \"+1 555 0100\",\n  \"course\": \"Computer Science\",\n  \"date_of_birth\": \"2004-04-15\",\n  \"enrollment_date\": \"2025-09-01\",\n  \"status\": \"Active\",\n  \"address\": \"100 College Avenue\"\n}" },
+            "url": "{{baseUrl}}/api/students"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["if (pm.response.code === 201) { pm.collectionVariables.set('studentId', pm.response.json().student.id); } pm.test('Student created', function () { pm.response.to.have.status(201); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Search students",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/students?search=Taylor&status=Active" }
+        }
+      ]
+    },
+    {
+      "name": "Attendance for today",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/attendance?date=2026-10-30" }
+    },
+    {
+      "name": "Record attendance",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"date\": \"2026-10-30\",\n  \"records\": [{ \"student_id\": {{studentId}}, \"status\": \"Present\" }]\n}" },
+        "url": "{{baseUrl}}/api/attendance"
+      }
+    },
+    {
+      "name": "Create grade",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"student_id\": {{studentId}},\n  \"assessment\": \"Midterm exam\",\n  \"score\": 88,\n  \"max_score\": 100,\n  \"grade_date\": \"2026-10-30\"\n}" },
+        "url": "{{baseUrl}}/api/grades"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["if (pm.response.code === 201) { pm.collectionVariables.set('gradeId', pm.response.json().grade.id); } pm.test('Grade recorded', function () { pm.response.to.have.status(201); });"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "Create fee record",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"student_id\": {{studentId}},\n  \"description\": \"Semester tuition\",\n  \"amount\": 1000,\n  \"amount_paid\": 250,\n  \"due_date\": \"2026-11-15\"\n}" },
+        "url": "{{baseUrl}}/api/fees"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["if (pm.response.code === 201) { pm.collectionVariables.set('feeId', pm.response.json().fee.id); } pm.test('Fee record created', function () { pm.response.to.have.status(201); });"], "type": "text/javascript" } }]
+    },
+    {
+      "name": "Dashboard stats",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/stats" }
+    },
+    {
+      "name": "Reports",
+      "item": [
+        { "name": "Students CSV", "request": { "method": "GET", "url": "{{baseUrl}}/api/reports/students.csv" } },
+        { "name": "Courses CSV", "request": { "method": "GET", "url": "{{baseUrl}}/api/reports/courses.csv" } },
+        { "name": "Attendance CSV", "request": { "method": "GET", "url": "{{baseUrl}}/api/reports/attendance.csv" } },
+        { "name": "Grades CSV", "request": { "method": "GET", "url": "{{baseUrl}}/api/reports/grades.csv" } },
+        { "name": "Fees CSV", "request": { "method": "GET", "url": "{{baseUrl}}/api/reports/fees.csv" } }
+      ]
+    },
+    {
+      "name": "Sign out",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "url": "{{baseUrl}}/api/auth/logout"
+      }
+    }
+  ]
+}

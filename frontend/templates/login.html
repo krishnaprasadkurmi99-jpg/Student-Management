@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f6f1">
+  <title>Sign in | Campusly</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script src="{{ url_for('static', filename='auth.js') }}" defer></script>
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <section class="auth-story">
+      <a class="brand" href="/"><span class="brand-mark">C</span><span>campusly<span class="brand-dot">.</span></span></a>
+      <div class="auth-story-copy">
+        <span class="auth-kicker"><span></span> YOUR CAMPUS, IN ONE PLACE</span>
+        <h1>Make room<br>for what<br><em>matters.</em></h1>
+        <p>One thoughtful space for your students, classes, and the details that keep learning moving.</p>
+      </div>
+      <div class="auth-story-footer">STUDENT MANAGEMENT, MADE HUMAN <span>✳</span></div>
+    </section>
+    <section class="auth-panel">
+      <div class="auth-panel-inner">
+        <span class="auth-mark">✳</span>
+        <p class="auth-eyebrow" id="auth-eyebrow">WELCOME BACK</p>
+        <h2 id="auth-title">Sign in to Campusly</h2>
+        <p class="auth-description" id="auth-description">Your student workspace is right where you left it.</p>
+        <form id="auth-form">
+          <div class="auth-field" id="name-field" hidden>
+            <label for="auth-name">Your name</label>
+            <input id="auth-name" name="name" autocomplete="name" maxlength="100">
+          </div>
+          <div class="auth-field">
+            <label for="auth-email">Email address</label>
+            <input id="auth-email" name="email" type="email" autocomplete="username" required maxlength="254" placeholder="you@school.edu">
+          </div>
+          <div class="auth-field">
+            <label for="auth-password">Password</label>
+            <input id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="12" placeholder="At least 12 characters">
+          </div>
+          <div class="auth-error" id="auth-error" role="alert"></div>
+          <button class="auth-submit" id="auth-submit" type="submit">Sign in <span>→</span></button>
+        </form>
+        <p class="auth-security">🔒 &nbsp;Private workspace · Passwords are securely hashed</p>
+      </div>
+      <span class="auth-orbit auth-orbit-one"></span><span class="auth-orbit auth-orbit-two"></span>
+    </section>
+  </main>
+</body>
+</html>
