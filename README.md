@@ -12,10 +12,12 @@ frontend/
   templates/
     index.html           HTML page
     login.html           Sign-in and first-admin setup
-  static/
-    styles.css           CSS styles
+public/
+  assets/
+    styles.css           CSS styles served directly by Vercel
     app.js               Browser JavaScript
     auth.js              Sign-in and first-admin setup
+pyproject.toml            Vercel Flask entrypoint
 tests/
   test_app.py            Backend API tests
 ```
@@ -48,7 +50,7 @@ python backend\app.py
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000). On first run, create the initial administrator account in the browser. Choose a unique email address and a password of at least 12 characters. The password is stored as a secure hash. Subsequent visits show the sign-in page.
 
-The local SQLite database is created automatically on startup. To initialize explicitly, run `flask --app backend.app init-db`. The root `app.py` remains a compatibility entry point, so `python app.py` works too. To create another administrator from the command line, run `flask --app backend.app create-admin`; the command prompts for account details and a password.
+The local SQLite database is created on the first API request. To initialize explicitly, run `flask --app backend.app init-db`. The root `app.py` remains a compatibility entry point, so `python app.py` works too. To create another administrator from the command line, run `flask --app backend.app create-admin`; the command prompts for account details and a password.
 
 Set `SECRET_KEY` to a long, random secret in deployment so sessions remain secure across restarts. On HTTPS deployments also set `SESSION_COOKIE_SECURE=1`. Keep both values private; do not commit them.
 
@@ -88,11 +90,19 @@ Student creation requires `first_name`, `last_name`, `email`, `course` (an exist
 
 In Postman, choose **Import** and select `postman/Student-Management-API.postman_collection.json`. Set the collection's `baseUrl`, `adminName`, `adminEmail`, and `adminPassword` variables. Run **Auth status**, then **First-time administrator setup** (first run) or **Sign in** (later runs). Postman keeps the session cookie and CSRF token for subsequent API requests. Create a course before creating students.
 
-## Deploy with a cloud PostgreSQL database
+## Deploy to Vercel
 
-Create a managed PostgreSQL database with your hosting provider and set `DATABASE_URL` in the web service's environment to its connection URL. The app accepts `postgresql://` and older `postgres://` URLs and connects using Psycopg 3. Do not commit credentials; use the host's secret/environment-variable settings.
+Import the repository into Vercel with the repository root as the project root. `pyproject.toml` points Vercel's Python runtime to `backend.app:app`; dependencies come from `requirements.txt`, and frontend files in `public/assets/` are served by Vercel's static CDN.
 
-This repository includes a `Procfile` for platforms that support it. Configure the web service to install `requirements.txt` and start with `gunicorn backend.app:app`. Set a long random `SECRET_KEY` and `SESSION_COOKIE_SECURE=1` in the deployment environment. The tables are created automatically when the app starts. For a local PostgreSQL test, set `DATABASE_URL` in your shell before starting the app; leave it unset to use SQLite.
+In Vercel **Project Settings → Environment Variables**, set:
+
+- `SECRET_KEY`: a long, random, stable secret; do not generate a new value per deployment.
+- `DATABASE_URL`: a managed PostgreSQL connection URL. Vercel's function filesystem (including `/tmp`) is temporary, so the SQLite fallback is only for local development and is not persistent across deployments or function instances.
+- `SESSION_COOKIE_SECURE=1` for the HTTPS deployment.
+
+The app creates database tables on the first API request rather than while Vercel imports the function. This avoids connecting to the database during the build/import phase. The app accepts `postgresql://` and older `postgres://` URLs and connects using Psycopg 3. Never commit production credentials.
+
+For other hosts, the repository includes a `Procfile`; configure the service to install `requirements.txt` and start with `gunicorn backend.app:app`.
 
 ## Tests
 

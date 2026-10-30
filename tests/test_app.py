@@ -98,14 +98,42 @@ def test_authentication_and_csrf(app):
     assert anonymous.post("/api/courses", json={"name": "No token"}).status_code == 400
 
 
+def test_vercel_requires_a_stable_session_secret(monkeypatch):
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="stable SECRET_KEY"):
+        create_app()
+
+
+def test_database_initialization_is_deferred_until_api_use(tmp_path):
+    database_path = tmp_path / "deferred.sqlite"
+    application = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test-key-not-for-production",
+            "SQLALCHEMY_DATABASE_URI": f"sqlite:///{database_path.as_posix()}",
+        }
+    )
+    assert not database_path.exists()
+
+    client = application.test_client()
+    assert client.get("/api/health").status_code == 200
+    assert not database_path.exists()
+    assert client.get("/api/auth/status").status_code == 200
+    assert database_path.exists()
+
+    with application.app_context():
+        db.drop_all()
+
+
 def test_student_and_course_management(client):
     page = client.get("/")
     assert page.status_code == 200
     assert b"Attendance" in page.data
     assert client.get("/login").status_code == 200
-    assert client.get("/static/app.js").status_code == 200
-    assert client.get("/static/auth.js").status_code == 200
-    assert client.get("/static/styles.css").status_code == 200
+    assert client.get("/assets/app.js").status_code == 200
+    assert client.get("/assets/auth.js").status_code == 200
+    assert client.get("/assets/styles.css").status_code == 200
     assert client.get("/api/health").json == {"status": "ok"}
 
     course = create_course(client)

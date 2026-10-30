@@ -2,13 +2,15 @@ import csv
 import io
 import os
 import re
+import tempfile
 import secrets
+from threading import Lock
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import click
-from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import UniqueConstraint, case, func, or_
 from sqlalchemy.exc import IntegrityError
@@ -125,13 +127,26 @@ class Fee(db.Model):
 
 
 def _database_url():
-    url = os.environ.get("DATABASE_URL", "sqlite:///student_management.db")
-    if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+psycopg://", 1)
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+psycopg://", 1)
-    return url
+    url = os.environ.get("DATABASE_URL")
 
+    if not url:
+        return "sqlite:///student_management.db"
+
+    if url.startswith("postgres://"):
+        return url.replace(
+            "postgres://",
+            "postgresql+psycopg://",
+            1
+        )
+
+    if url.startswith("postgresql://"):
+        return url.replace(
+            "postgresql://",
+            "postgresql+psycopg://",
+            1
+        )
+
+    return url
 
 def _parse_date(value, field, required=True):
     if not value and not required:
@@ -230,27 +245,74 @@ def _csv_response(filename, headers, rows):
 
 
 def create_app(test_config=None):
+    if os.environ.get("VERCEL") and not os.environ.get("SECRET_KEY"):
+        raise RuntimeError(
+            "Set a stable SECRET_KEY in the Vercel project environment variables."
+        )
+
     frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
-    app = Flask(__name__, template_folder=str(frontend_dir / "templates"), static_folder=str(frontend_dir / "static"))
+    public_assets_dir = Path(__file__).resolve().parent.parent / "public" / "assets"
+
+    if os.environ.get("VERCEL"):
+        instance_dir = Path(tempfile.gettempdir()) / "student_management_instance"
+    else:
+        instance_dir = Path(__file__).resolve().parent.parent / "instance"
+    instance_dir.mkdir(parents=True, exist_ok=True)
+
+    app = Flask(
+        __name__,
+        template_folder=str(frontend_dir / "templates"),
+        static_folder=None,
+        instance_path=str(instance_dir),
+    )
     app.config.from_mapping(
         SQLALCHEMY_DATABASE_URI=_database_url(),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         SECRET_KEY=os.environ.get("SECRET_KEY") or secrets.token_hex(32),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "0") == "1",
+        SESSION_COOKIE_SECURE=os.environ.get(
+            "SESSION_COOKIE_SECURE", "1" if os.environ.get("VERCEL") else "0"
+        ) == "1",
         JSON_SORT_KEYS=False,
     )
     if test_config:
         app.config.update(test_config)
+    if os.environ.get("VERCEL") and not os.environ.get("DATABASE_URL"):
+        app.logger.warning(
+            "DATABASE_URL is unset; Vercel SQLite storage is temporary and not durable."
+        )
     db.init_app(app)
 
-    with app.app_context():
-        db.create_all()
-        for (course_name,) in db.session.query(Student.course).distinct().all():
-            if not Course.query.filter_by(name=course_name).first():
-                db.session.add(Course(name=course_name))
-        db.session.commit()
+    database_initialized = False
+    database_init_lock = Lock()
+
+    @app.before_request
+    def initialize_database():
+        nonlocal database_initialized
+        if (
+            request.path in {"/", "/login", "/api/health"}
+            or request.path.startswith("/assets/")
+        ):
+            return None
+        if request.path.startswith("/api/") and request.path not in {
+            "/api/auth/status",
+            "/api/auth/setup",
+            "/api/auth/login",
+        } and not session.get("user_id"):
+            return None
+        if database_initialized:
+            return None
+        with database_init_lock:
+            if database_initialized:
+                return None
+            db.create_all()
+            for (course_name,) in db.session.query(Student.course).distinct().all():
+                if not Course.query.filter_by(name=course_name).first():
+                    db.session.add(Course(name=course_name))
+            db.session.commit()
+            database_initialized = True
+        return None
 
     @app.before_request
     def protect_api():
@@ -272,6 +334,10 @@ def create_app(test_config=None):
     @app.get("/login")
     def login_page():
         return render_template("login.html")
+
+    @app.get("/assets/<path:filename>")
+    def local_asset(filename):
+        return send_from_directory(public_assets_dir, filename)
 
     @app.get("/")
     def index():
@@ -670,6 +736,7 @@ def create_app(test_config=None):
     @click.password_option("--password", confirmation_prompt=True)
     def create_admin_command(name, email, password):
         """Create an administrator account for this database."""
+        db.create_all()
         normalized_email = email.strip().lower()
         if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized_email):
             raise click.ClickException("Enter a valid email address.")
