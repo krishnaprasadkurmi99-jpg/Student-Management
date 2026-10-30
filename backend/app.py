@@ -126,6 +126,20 @@ class Fee(db.Model):
         }
 
 
+class AcademicEvent(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(120), nullable=False)
+    event_date = db.Column(db.Date, nullable=False, index=True)
+    description = db.Column(db.String(500), nullable=False, default="")
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self):
+        return {
+            "id": self.id, "title": self.title,
+            "event_date": self.event_date.isoformat(), "description": self.description,
+        }
+
+
 def _database_url():
     url = os.environ.get("DATABASE_URL")
 
@@ -424,6 +438,233 @@ def create_app(test_config=None):
             "graduated": Student.query.filter_by(status="Graduated").count(),
             "courses": Course.query.count(),
         })
+
+    @app.get("/api/dashboard")
+    def dashboard():
+        today = date.today()
+        period_start = date.fromordinal(today.toordinal() - 29)
+        total, active = Student.query.count(), Student.query.filter_by(status="Active").count()
+
+        recorded_attendance = Attendance.query.filter(
+            Attendance.attendance_date >= period_start,
+            Attendance.attendance_date <= today,
+            Attendance.status != "Excused",
+        ).all()
+        attendance_rate = (
+            round(sum(record.status in {"Present", "Late"} for record in recorded_attendance) / len(recorded_attendance) * 100)
+            if recorded_attendance else None
+        )
+
+        pending_balance = db.session.query(func.sum(Fee.amount - Fee.amount_paid)).filter(
+            Fee.amount > Fee.amount_paid
+        ).scalar() or Decimal("0")
+        fee_rows = db.session.query(Fee, Student).join(Student).filter(
+            Fee.amount > Fee.amount_paid
+        ).order_by(Fee.due_date).all()
+        fees = [fee for fee, _student in fee_rows]
+
+        enrollment = []
+        for offset in range(5, -1, -1):
+            month_index = today.year * 12 + today.month - 1 - offset
+            year, month = divmod(month_index, 12)
+            month += 1
+            enrollment.append({
+                "month": date(year, month, 1).strftime("%b"),
+                "count": Student.query.filter(
+                    func.strftime("%Y-%m", Student.enrollment_date) == f"{year:04d}-{month:02d}"
+                ).count() if db.engine.dialect.name == "sqlite" else db.session.query(func.count(Student.id)).filter(
+                    func.extract("year", Student.enrollment_date) == year,
+                    func.extract("month", Student.enrollment_date) == month,
+                ).scalar(),
+            })
+
+        attendance_trend = []
+        for index in range(5):
+            week_start = date.fromordinal(period_start.toordinal() + index * 6)
+            week_end = date.fromordinal(min(today.toordinal(), week_start.toordinal() + 5))
+            weekly = Attendance.query.filter(
+                Attendance.attendance_date >= week_start,
+                Attendance.attendance_date <= week_end,
+                Attendance.status != "Excused",
+            ).all()
+            attendance_trend.append({
+                "label": week_start.strftime("%d %b"),
+                "rate": round(sum(item.status in {"Present", "Late"} for item in weekly) / len(weekly) * 100) if weekly else None,
+            })
+
+        insights, attention = [], {}
+        active_students = Student.query.filter_by(status="Active").order_by(Student.last_name, Student.first_name).all()
+        attendance_by_student = {}
+        for student_id, status in db.session.query(Attendance.student_id, Attendance.status).join(Student).filter(
+            Student.status == "Active",
+            Attendance.attendance_date >= period_start,
+            Attendance.attendance_date <= today,
+            Attendance.status != "Excused",
+        ).all():
+            attendance_by_student.setdefault(student_id, []).append(status)
+        grades_by_student = {}
+        for student_id, score, maximum in db.session.query(
+            Grade.student_id, Grade.score, Grade.max_score
+        ).join(Student).filter(Student.status == "Active").order_by(
+            Grade.student_id, Grade.grade_date.desc(), Grade.id.desc()
+        ).all():
+            student_grades = grades_by_student.setdefault(student_id, [])
+            if len(student_grades) < 2:
+                student_grades.append((score, maximum))
+
+        for student in active_students:
+            marks = attendance_by_student.get(student.id, [])
+            if len(marks) >= 3:
+                rate = round(sum(status in {"Present", "Late"} for status in marks) / len(marks) * 100)
+                if rate < 75:
+                    insights.append({
+                        "type": "attendance", "student_id": student.id, "student_name": f"{student.first_name} {student.last_name}",
+                        "message": f"Attendance is {rate}% over the last 30 days.", "severity": "high" if rate < 60 else "medium",
+                    })
+                    attention[student.id] = student
+
+            grades_for_student = grades_by_student.get(student.id, [])
+            if len(grades_for_student) == 2:
+                latest, previous = (float(score / maximum * 100) for score, maximum in grades_for_student)
+                if previous - latest >= 10:
+                    insights.append({
+                        "type": "grades", "student_id": student.id, "student_name": f"{student.first_name} {student.last_name}",
+                        "message": f"Recent assessment average declined by {round(previous - latest)} percentage points.", "severity": "medium",
+                    })
+                    attention[student.id] = student
+
+        for fee, student in fee_rows:
+            if student:
+                overdue = fee.due_date < today
+                insights.append({
+                    "type": "fees", "student_id": student.id, "student_name": f"{student.first_name} {student.last_name}",
+                    "message": f"{fee.description} has an {'overdue' if overdue else 'pending'} balance of {fee.amount - fee.amount_paid:.2f}.",
+                    "severity": "high" if overdue else "medium",
+                })
+                attention[student.id] = student
+
+        activity = []
+        for student in Student.query.order_by(Student.created_at.desc()).limit(6).all():
+            activity.append({
+                "date": student.created_at.isoformat(),
+                "label": f"{student.first_name} {student.last_name} enrolled",
+                "detail": student.course, "kind": "student",
+            })
+        for grade, student in db.session.query(Grade, Student).join(Student).order_by(Grade.grade_date.desc(), Grade.id.desc()).limit(6).all():
+            activity.append({
+                "date": grade.grade_date.isoformat(),
+                "label": f"Assessment recorded for {student.first_name} {student.last_name}",
+                "detail": f"{grade.assessment} · {grade.score:g}/{grade.max_score:g}", "kind": "grade",
+            })
+        for record, student in db.session.query(Attendance, Student).join(Student).order_by(Attendance.attendance_date.desc(), Attendance.id.desc()).limit(6).all():
+            activity.append({
+                "date": record.attendance_date.isoformat(),
+                "label": f"{record.status} · {student.first_name} {student.last_name}",
+                "detail": "Attendance record", "kind": "attendance",
+            })
+        activity.sort(key=lambda item: item["date"], reverse=True)
+
+        events = AcademicEvent.query.filter(AcademicEvent.event_date >= today).order_by(AcademicEvent.event_date).limit(6).all()
+        return jsonify({
+            "metrics": {
+                "total": total, "active": active,
+                "graduated": Student.query.filter_by(status="Graduated").count(),
+                "courses": Course.query.count(), "attendance_rate": attendance_rate,
+                "pending_fees": float(pending_balance),
+            },
+            "enrollment": enrollment, "attendance_trend": attendance_trend,
+            "insights": insights[:12],
+            "attention": [{"id": item.id, "full_name": f"{item.first_name} {item.last_name}", "course": item.course} for item in list(attention.values())[:6]],
+            "activity": activity[:8], "events": [event.to_dict() for event in events],
+            "overdue_fee_count": sum(fee.due_date < today for fee in fees),
+        })
+
+    @app.get("/api/search")
+    def global_search():
+        term = request.args.get("q", "").strip()
+        if not term:
+            return jsonify({"students": [], "courses": [], "grades": [], "fees": [], "events": []})
+        pattern = f"%{term}%"
+        found_students = Student.query.filter(or_(
+            Student.first_name.ilike(pattern), Student.last_name.ilike(pattern),
+            Student.email.ilike(pattern), Student.course.ilike(pattern),
+        )).order_by(Student.last_name, Student.first_name).limit(8).all()
+        found_courses = Course.query.filter(or_(
+            Course.name.ilike(pattern), Course.description.ilike(pattern),
+        )).order_by(Course.name).limit(5).all()
+        found_grades = db.session.query(Grade, Student).join(Student).filter(or_(
+            Grade.assessment.ilike(pattern), Student.first_name.ilike(pattern),
+            Student.last_name.ilike(pattern),
+        )).order_by(Grade.grade_date.desc(), Grade.id.desc()).limit(5).all()
+        found_fees = db.session.query(Fee, Student).join(Student).filter(or_(
+            Fee.description.ilike(pattern), Student.first_name.ilike(pattern),
+            Student.last_name.ilike(pattern),
+        )).order_by(Fee.due_date).limit(5).all()
+        found_events = AcademicEvent.query.filter(or_(
+            AcademicEvent.title.ilike(pattern), AcademicEvent.description.ilike(pattern),
+        )).order_by(AcademicEvent.event_date).limit(5).all()
+        return jsonify({
+            "students": [{"id": item.id, "full_name": f"{item.first_name} {item.last_name}", "email": item.email, "course": item.course} for item in found_students],
+            "courses": [{"id": item.id, "name": item.name} for item in found_courses],
+            "grades": [{"id": grade.id, "student_id": student.id, "student_name": f"{student.first_name} {student.last_name}", "assessment": grade.assessment} for grade, student in found_grades],
+            "fees": [{"id": fee.id, "student_id": student.id, "student_name": f"{student.first_name} {student.last_name}", "description": fee.description} for fee, student in found_fees],
+            "events": [{"id": event.id, "title": event.title, "event_date": event.event_date.isoformat()} for event in found_events],
+        })
+
+    @app.get("/api/students/<int:student_id>/profile")
+    def student_profile(student_id):
+        student = db.session.get(Student, student_id)
+        if student is None:
+            return _json_error("Student not found.", 404)
+        marks = Attendance.query.filter_by(student_id=student_id).order_by(Attendance.attendance_date.desc()).all()
+        grades_for_student = Grade.query.filter_by(student_id=student_id).order_by(Grade.grade_date.desc(), Grade.id.desc()).all()
+        fees_for_student = Fee.query.filter_by(student_id=student_id).order_by(Fee.due_date).all()
+        eligible_marks = [mark for mark in marks if mark.status != "Excused"]
+        attendance_rate = round(sum(mark.status in {"Present", "Late"} for mark in eligible_marks) / len(eligible_marks) * 100) if eligible_marks else None
+        achievements = []
+        if attendance_rate is not None and attendance_rate >= 95:
+            achievements.append({"title": "Consistent presence", "detail": "At least 95% recorded attendance"})
+        if grades_for_student and sum(float(item.score / item.max_score * 100) for item in grades_for_student) / len(grades_for_student) >= 90:
+            achievements.append({"title": "Academic distinction", "detail": "Assessment average of 90% or higher"})
+        return jsonify({
+            "student": student.to_dict(),
+            "attendance": {
+                "rate": attendance_rate, "present": sum(mark.status in {"Present", "Late"} for mark in marks),
+                "total": len(eligible_marks), "records": [
+                    {"date": mark.attendance_date.isoformat(), "status": mark.status} for mark in marks[:12]
+                ],
+            },
+            "grades": [item.to_dict() for item in grades_for_student],
+            "fees": [item.to_dict() for item in fees_for_student],
+            "achievements": achievements,
+        })
+
+    @app.route("/api/events", methods=["GET", "POST"])
+    def academic_events():
+        if request.method == "GET":
+            events = AcademicEvent.query.order_by(AcademicEvent.event_date).all()
+            return jsonify({"events": [event.to_dict() for event in events]})
+        data = _json_object_body()
+        if data is None:
+            return _json_error("Request body must be a JSON object.", 400)
+        title = str(data.get("title", "")).strip()
+        description = str(data.get("description", "")).strip()
+        event_date, error = _parse_date(data.get("event_date"), "event_date")
+        if not title or len(title) > 120 or len(description) > 500 or error:
+            return _json_error(error or "Event title is required (up to 120 characters) and description must be at most 500 characters.", 400)
+        event = AcademicEvent(title=title, description=description, event_date=event_date)
+        db.session.add(event)
+        db.session.commit()
+        return jsonify({"event": event.to_dict()}), 201
+
+    @app.delete("/api/events/<int:event_id>")
+    def delete_academic_event(event_id):
+        event = db.session.get(AcademicEvent, event_id)
+        if event is None:
+            return _json_error("Event not found.", 404)
+        db.session.delete(event)
+        db.session.commit()
+        return "", 204
 
     @app.route("/api/courses", methods=["GET", "POST"])
     def courses():

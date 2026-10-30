@@ -237,3 +237,85 @@ def test_validation_and_duplicate_email(client):
     assert client.post("/api/students", json=student_payload()).status_code == 409
     assert client.post("/api/courses", json={"name": "Computer Science"}).status_code == 409
     assert client.delete("/api/courses/1").status_code == 409
+
+
+def test_dashboard_search_student_profile_and_events(client):
+    from datetime import date, timedelta
+
+    create_course(client)
+    student = create_student(client)
+    student_id = student["id"]
+    today = date.today()
+
+    for offset, status in enumerate(("Absent", "Present", "Absent")):
+        day = (today - timedelta(days=offset)).isoformat()
+        assert client.put(
+            "/api/attendance",
+            json={"date": day, "records": [{"student_id": student_id, "status": status}]},
+        ).status_code == 200
+    for score, day in ((90, today - timedelta(days=2)), (70, today)):
+        assert client.post(
+            "/api/grades",
+            json={
+                "student_id": student_id,
+                "assessment": "Progress check",
+                "score": score,
+                "max_score": 100,
+                "grade_date": day.isoformat(),
+            },
+        ).status_code == 201
+    assert client.post(
+        "/api/fees",
+        json={
+            "student_id": student_id,
+            "description": "Tuition",
+            "amount": 500,
+            "amount_paid": 100,
+            "due_date": (today - timedelta(days=1)).isoformat(),
+        },
+    ).status_code == 201
+
+    dashboard = client.get("/api/dashboard")
+    assert dashboard.status_code == 200
+    assert dashboard.json["metrics"]["total"] == 1
+    assert dashboard.json["metrics"]["attendance_rate"] == 33
+    assert dashboard.json["metrics"]["pending_fees"] == 400
+    assert dashboard.json["overdue_fee_count"] == 1
+    assert {item["type"] for item in dashboard.json["insights"]} == {"attendance", "grades", "fees"}
+    assert dashboard.json["attention"][0]["id"] == student_id
+    labels = [item["label"] for item in dashboard.json["attendance_trend"]]
+    assert len(labels) == 5
+    assert len(set(labels)) == 5
+    assert client.get("/api/search?q=alex").json["students"][0]["id"] == student_id
+    assert client.get("/api/search?q=progress").json["grades"][0]["student_id"] == student_id
+    assert client.get("/api/search?q=tuition").json["fees"][0]["student_id"] == student_id
+
+    profile = client.get(f"/api/students/{student_id}/profile")
+    assert profile.status_code == 200
+    assert profile.json["student"]["full_name"] == "Alex Morgan"
+    assert profile.json["attendance"]["rate"] == 33
+    assert len(profile.json["grades"]) == 2
+    assert profile.json["fees"][0]["balance"] == 400
+
+    event_date = (today + timedelta(days=7)).isoformat()
+    event = client.post(
+        "/api/events",
+        json={"title": "Semester begins", "event_date": event_date, "description": "Welcome back"},
+    )
+    assert event.status_code == 201
+    assert client.post(
+        "/api/events", json={"title": "Invalid event", "event_date": "not-a-date"}
+    ).status_code == 400
+    event_id = event.json["event"]["id"]
+    assert client.get("/api/dashboard").json["events"][0]["id"] == event_id
+    assert client.get("/api/search?q=semester").json["events"][0]["id"] == event_id
+    assert client.delete(f"/api/events/{event_id}").status_code == 204
+    assert client.delete(f"/api/events/{event_id}").status_code == 404
+
+
+def test_new_dashboard_endpoints_require_authentication(app):
+    anonymous = app.test_client()
+    assert anonymous.get("/api/dashboard").status_code == 401
+    assert anonymous.get("/api/search?q=student").status_code == 401
+    assert anonymous.get("/api/students/1/profile").status_code == 401
+    assert anonymous.get("/api/events").status_code == 401

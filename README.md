@@ -33,6 +33,10 @@ tests/
 - Track fee amounts, partial payments, balances, due dates, and payment status (no payment processing).
 - Download student, course, attendance, grades, and fee reports as CSV.
 - Dashboard totals for enrolled students, active students, graduates, and courses.
+- An analytics dashboard with database-backed enrollment and attendance charts, outstanding fee totals, and rule-based student support insights.
+- Student 360 profiles with contact details, attendance history, grades, fee balances, and attendance/academic achievement badges.
+- Global search across students, courses, assessments, fee records, and academic events; notification summaries and an academic events calendar.
+- CSV student import (up to 500 records per file) and browser print-to-PDF reports.
 - Validated JSON API with duplicate-email, authentication, and missing-record handling.
 - SQLite locally; PostgreSQL in deployment via `DATABASE_URL`.
 - Importable Postman collection for API checks and CRUD examples.
@@ -50,7 +54,7 @@ python backend\app.py
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000). On first run, create the initial administrator account in the browser. Choose a unique email address and a password of at least 12 characters. The password is stored as a secure hash. Subsequent visits show the sign-in page.
 
-The local SQLite database is created on the first API request. To initialize explicitly, run `flask --app backend.app init-db`. The root `app.py` remains a compatibility entry point, so `python app.py` works too. To create another administrator from the command line, run `flask --app backend.app create-admin`; the command prompts for account details and a password.
+The local SQLite database is created on the first API request. The academic-events feature adds one table through the app's existing `db.create_all()` initialization; existing student records and tables are unchanged. To initialize explicitly, run `flask --app backend.app init-db`. The root `app.py` remains a compatibility entry point, so `python app.py` works too. To create another administrator from the command line, run `flask --app backend.app create-admin`; the command prompts for account details and a password.
 
 Set `SECRET_KEY` to a long, random secret in deployment so sessions remain secure across restarts. On HTTPS deployments also set `SESSION_COOKIE_SECURE=1`. Keep both values private; do not commit them.
 
@@ -69,6 +73,11 @@ Base URL: `http://127.0.0.1:5000`
 | `GET` | `/api/auth/me` | Get the current account and CSRF token |
 | `POST` | `/api/auth/logout` | Sign out |
 | `GET` | `/api/stats` | Dashboard totals |
+| `GET` | `/api/dashboard` | Dashboard metrics, charts, insights, recent academic records, attention list, and upcoming events |
+| `GET` | `/api/search?q=<term>` | Search students and courses |
+| `GET` | `/api/students/<id>/profile` | Student 360 profile with attendance, grades, fees, and earned badges |
+| `GET`, `POST` | `/api/events` | List and create academic events |
+| `DELETE` | `/api/events/<id>` | Remove an academic event |
 | `GET`, `POST` | `/api/courses` | List and create courses |
 | `PUT`, `DELETE` | `/api/courses/<id>` | Update or delete a course (enrolled courses cannot be deleted) |
 | `GET` | `/api/students` | List students; supports `search` and `status` query parameters |
@@ -85,6 +94,12 @@ Base URL: `http://127.0.0.1:5000`
 All `/api` endpoints except health, auth status, first-admin setup, and sign-in require a signed-in administrator. Send the session cookie and `X-CSRF-Token` header with every `POST`, `PUT`, and `DELETE`. Fetch the token from `/api/auth/status` before setup or from `/api/auth/me` after sign-in.
 
 Student creation requires `first_name`, `last_name`, `email`, `course` (an existing course name), `enrollment_date` (`YYYY-MM-DD`), and `status` (`Active`, `Graduated`, or `On leave`). `phone`, `date_of_birth`, and `address` are optional. Grades use a non-negative score that cannot exceed the maximum. Fee payments are manually recorded; paid amounts cannot exceed the fee total. Validation errors use status `400`, duplicate records use `409`, and missing records use `404`.
+
+The dashboard derives attendance metrics from recorded, non-excused marks in the last 30 days. Attendance alerts require at least three recorded marks and flag rates below 75%; grade alerts compare the two most recent assessments and flag declines of at least 10 percentage points. Outstanding fees are shown in the numeric units entered in fee records (the app does not currently configure a currency).
+
+For student CSV imports, include these headers: `first_name,last_name,email,course,enrollment_date,status`. Optional columns are `phone,date_of_birth,address`. Course names must already exist in the course catalog. The browser reports per-row validation errors; successfully imported rows remain saved if other rows fail. Import accepts up to 500 records per file.
+
+The **Print / Save PDF** report action uses the browser's print dialog; choose **Save as PDF** to download a PDF. CSV exports remain available for each report type.
 
 ## Postman
 
