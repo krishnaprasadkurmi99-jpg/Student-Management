@@ -732,6 +732,29 @@ document.querySelector("#theme-toggle").setAttribute(
   document.documentElement.dataset.theme === "dark" ? "Switch to light theme" : "Switch to dark theme",
 );
 document.querySelector("#print-reports").addEventListener("click", () => window.print());
+window.addEventListener("campusly:realtime-update", () => { void loadDashboard(); });
+document.querySelectorAll(".archive-report").forEach((button) => {
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    const status = document.querySelector("#report-archive-status");
+    status.textContent = "Uploading report to Neon Object Storage…";
+    try {
+      const archive = await api(`/api/reports/${button.dataset.report}/archive`, { method: "POST" });
+      const link = document.createElement("a");
+      link.href = archive.download_url;
+      link.textContent = `Download archived ${archive.filename} (link expires in 15 minutes)`;
+      link.target = "_blank";
+      link.rel = "noopener";
+      status.replaceChildren(link);
+      showToast("Report archived in Neon Object Storage.");
+    } catch (error) {
+      status.textContent = error.message;
+      showToast(error.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+});
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();

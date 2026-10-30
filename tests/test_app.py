@@ -47,8 +47,15 @@ def student_payload(email="alex@example.com"):
     }
 
 
+def test_database_url_takes_precedence_over_local_postgres_configuration(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://neon-host/neon-db")
+    monkeypatch.setenv("CAMPUSLY_DB_NAME", "campusly")
+
+    assert _database_url() == "postgresql+psycopg://neon-host/neon-db"
+
+
 def test_local_postgres_configuration_builds_safe_url(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "postgresql://another-host/not-campusly")
+    monkeypatch.setenv("DATABASE_URL", "")
     monkeypatch.setenv("CAMPUSLY_DB_HOST", "localhost")
     monkeypatch.setenv("CAMPUSLY_DB_PORT", "5432")
     monkeypatch.setenv("CAMPUSLY_DB_NAME", "campusly")
@@ -151,6 +158,82 @@ def test_database_initialization_is_deferred_until_api_use(tmp_path):
 
     with application.app_context():
         db.drop_all()
+
+
+def test_report_archive_uploads_csv_to_neon_storage(client, monkeypatch):
+    class FakeStorage:
+        def generate_presigned_url(self, operation, *, Params, ExpiresIn):
+            assert operation == "get_object"
+            assert Params["Bucket"] == "assets"
+            assert ExpiresIn == 900
+            return "https://storage.example/download"
+
+        def put_object(self, **kwargs):
+            self.upload = kwargs
+
+    storage = FakeStorage()
+    monkeypatch.setattr("backend.app._neon_storage_client", lambda: storage)
+
+    response = client.post("/api/reports/students/archive")
+
+    assert response.status_code == 201
+    assert response.json["download_url"] == "https://storage.example/download"
+    assert storage.upload["Bucket"] == "assets"
+    assert storage.upload["Key"].startswith("reports/students/students-")
+    assert storage.upload["Body"].startswith(b"ID,First name,Last name")
+    assert storage.upload["ContentType"] == "text/csv; charset=utf-8"
+    assert client.post("/api/reports/unknown/archive").status_code == 404
+
+
+def test_neon_function_health_proxy(client, monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"status":"ok"}'
+
+    monkeypatch.setenv("NEON_FUNCTION_HELLO_BASE_URL", "https://function.example")
+    monkeypatch.setattr("backend.app.urlopen", lambda url, timeout: FakeResponse())
+
+    response = client.get("/api/neon/function-health")
+
+    assert response.status_code == 200
+    assert response.json == {"status": "ok", "service": "neon-function"}
+
+
+def test_neon_realtime_query_is_proxied_only_for_authenticated_users(client, monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"sealedQuery":{"expiresAt":123}}'
+
+    def fake_urlopen(request, timeout):
+        assert request.full_url == "https://function.example/live-query"
+        assert request.get_header("Authorization") == "Bearer test-function-token"
+        assert timeout == 8
+        return FakeResponse()
+
+    monkeypatch.setenv("NEON_FUNCTION_HELLO_BASE_URL", "https://function.example")
+    monkeypatch.setenv("CAMPUSLY_FUNCTION_TOKEN", "test-function-token")
+    monkeypatch.setenv("NEON_REALTIME_URL", "wss://realtime.example")
+    monkeypatch.setattr("backend.app.urlopen", fake_urlopen)
+
+    response = client.get("/api/neon/realtime-query")
+
+    assert response.status_code == 200
+    assert response.json == {
+        "sealed_query": {"expiresAt": 123},
+        "realtime_url": "wss://realtime.example",
+    }
 
 
 def test_student_and_course_management(client):

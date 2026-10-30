@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/styles.css">
   <script src="/assets/app.js" defer></script>
+  <script type="module" src="/assets/realtime.bundle.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -65,6 +66,7 @@
               <div class="eyebrow"><span class="eyebrow-dot"></span> CAMPUSLY OVERVIEW</div>
               <h1>Good <span id="greeting-period">day</span>, <span id="welcome-name">Administrator</span></h1>
               <p class="page-subtitle">Your campus at a glance. Here’s what’s happening today.</p>
+              <span class="realtime-status" id="realtime-status" role="status">Connecting live updates…</span>
             </div>
             <div class="dashboard-actions">
               <button class="glass-button" id="add-event" type="button">＋ Add event</button>
@@ -200,12 +202,13 @@
         <section class="page-view" id="reports-view" hidden>
           <div class="page-heading"><div><div class="eyebrow"><span class="eyebrow-dot"></span> YOUR DATA, YOUR WAY</div><h1>Reports</h1><p class="page-subtitle">Download your records as CSV or print a clean report to PDF.</p></div><button class="secondary-button" id="print-reports" type="button">Print / Save PDF</button></div>
           <div class="report-grid">
-            <a class="report-card" href="/api/reports/students.csv"><span class="report-icon">▤</span><span><strong>Student directory</strong><small>Contact details, course and enrollment</small></span><b>↓</b></a>
-            <a class="report-card" href="/api/reports/courses.csv"><span class="report-icon">▧</span><span><strong>Course overview</strong><small>Courses with enrollment totals</small></span><b>↓</b></a>
-            <a class="report-card" href="/api/reports/attendance.csv"><span class="report-icon">◷</span><span><strong>Attendance register</strong><small>Daily attendance by student</small></span><b>↓</b></a>
-            <a class="report-card" href="/api/reports/grades.csv"><span class="report-icon">✳</span><span><strong>Assessment results</strong><small>Grades and maximum scores</small></span><b>↓</b></a>
-            <a class="report-card" href="/api/reports/fees.csv"><span class="report-icon">$</span><span><strong>Fee balances</strong><small>Amounts, payments and due dates</small></span><b>↓</b></a>
+            <div class="report-item"><a class="report-card" href="/api/reports/students.csv"><span class="report-icon">▤</span><span><strong>Student directory</strong><small>Contact details, course and enrollment</small></span><b>↓</b></a><button class="secondary-button archive-report" data-report="students" type="button">Archive in Neon</button></div>
+            <div class="report-item"><a class="report-card" href="/api/reports/courses.csv"><span class="report-icon">▧</span><span><strong>Course overview</strong><small>Courses with enrollment totals</small></span><b>↓</b></a><button class="secondary-button archive-report" data-report="courses" type="button">Archive in Neon</button></div>
+            <div class="report-item"><a class="report-card" href="/api/reports/attendance.csv"><span class="report-icon">◷</span><span><strong>Attendance register</strong><small>Daily attendance by student</small></span><b>↓</b></a><button class="secondary-button archive-report" data-report="attendance" type="button">Archive in Neon</button></div>
+            <div class="report-item"><a class="report-card" href="/api/reports/grades.csv"><span class="report-icon">✳</span><span><strong>Assessment results</strong><small>Grades and maximum scores</small></span><b>↓</b></a><button class="secondary-button archive-report" data-report="grades" type="button">Archive in Neon</button></div>
+            <div class="report-item"><a class="report-card" href="/api/reports/fees.csv"><span class="report-icon">$</span><span><strong>Fee balances</strong><small>Amounts, payments and due dates</small></span><b>↓</b></a><button class="secondary-button archive-report" data-report="fees" type="button">Archive in Neon</button></div>
           </div>
+          <p id="report-archive-status" class="footer-note" role="status" aria-live="polite"></p>
         </section>
       </div>
     </main>

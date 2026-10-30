@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import os
 import re
 import tempfile
@@ -10,12 +11,18 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import click
+import boto3
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import URL, UniqueConstraint, case, func, or_
 from sqlalchemy.exc import IntegrityError
+from botocore.config import Config as S3Config
+from botocore.exceptions import BotoCoreError, ClientError
 from werkzeug.security import check_password_hash, generate_password_hash
+from uuid import uuid4
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -144,6 +151,14 @@ class AcademicEvent(db.Model):
 
 
 def _database_url():
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if url:
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+psycopg://", 1)
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+psycopg://", 1)
+        return url
+
     local_database = os.environ.get("CAMPUSLY_DB_NAME", "").strip()
     if local_database:
         username = os.environ.get("CAMPUSLY_DB_USER", "").strip()
@@ -173,15 +188,23 @@ def _database_url():
             database=local_database,
         )
 
-    url = os.environ.get("DATABASE_URL", "").strip()
-    if url:
-        if url.startswith("postgres://"):
-            return url.replace("postgres://", "postgresql+psycopg://", 1)
-        if url.startswith("postgresql://"):
-            return url.replace("postgresql://", "postgresql+psycopg://", 1)
-        return url
-
     return "sqlite:///student_management.db"
+
+
+def _neon_storage_client():
+    required = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_ENDPOINT_URL_S3", "AWS_REGION")
+    missing = [key for key in required if not os.environ.get(key)]
+    if missing:
+        raise RuntimeError(f"Neon Object Storage is missing configuration: {', '.join(missing)}.")
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ["AWS_ENDPOINT_URL_S3"],
+        region_name=os.environ["AWS_REGION"],
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        config=S3Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+    )
+
 
 def _parse_date(value, field, required=True):
     if not value and not required:
@@ -991,6 +1014,78 @@ def create_app(test_config=None):
                 for f, s in rows
             ])
         return _json_error("Unknown report. Choose students, courses, attendance, grades, or fees.", 404)
+
+    @app.post("/api/reports/<report_name>/archive")
+    def archive_report(report_name):
+        supported_reports = {"students", "courses", "attendance", "grades", "fees"}
+        if report_name not in supported_reports:
+            return _json_error("Unknown report. Choose students, courses, attendance, grades, or fees.", 404)
+        report = report_csv(report_name)
+        filename = f"{report_name}-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{uuid4().hex[:8]}.csv"
+        object_key = f"reports/{report_name}/{filename}"
+        expires_in = 900
+        try:
+            storage = _neon_storage_client()
+            download_url = storage.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": "assets", "Key": object_key},
+                ExpiresIn=expires_in,
+            )
+            storage.put_object(
+                Bucket="assets",
+                Key=object_key,
+                Body=report.get_data(),
+                ContentType="text/csv; charset=utf-8",
+                Metadata={"report-type": report_name},
+            )
+        except RuntimeError as error:
+            app.logger.error("Neon Object Storage is not configured: %s", error)
+            return _json_error("Neon Object Storage is not configured.", 503)
+        except (BotoCoreError, ClientError):
+            app.logger.exception("Neon Object Storage report archive failed.")
+            return _json_error("Could not archive this report in Neon Object Storage.", 502)
+        return jsonify({"filename": filename, "download_url": download_url, "expires_in": expires_in}), 201
+
+    @app.get("/api/neon/function-health")
+    def neon_function_health():
+        function_url = os.environ.get("NEON_FUNCTION_HELLO_BASE_URL")
+        if not function_url:
+            return _json_error("Neon Function is not configured.", 503)
+        try:
+            with urlopen(function_url, timeout=8) as response:
+                result = json.loads(response.read())
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            app.logger.exception("Neon Function connectivity check failed.")
+            return _json_error("Neon Function connectivity check failed.", 502)
+        if not isinstance(result, dict) or result.get("status") != "ok":
+            app.logger.error("Neon Function returned an unexpected health response.")
+            return _json_error("Neon Function returned an unexpected response.", 502)
+        return jsonify({"status": "ok", "service": "neon-function"})
+
+    @app.get("/api/neon/realtime-query")
+    def neon_realtime_query():
+        function_url = os.environ.get("NEON_FUNCTION_HELLO_BASE_URL")
+        function_token = os.environ.get("CAMPUSLY_FUNCTION_TOKEN")
+        realtime_url = os.environ.get("NEON_REALTIME_URL")
+        if not function_url or not function_token or not realtime_url:
+            app.logger.error("Neon Realtime integration is missing required environment variables.")
+            return _json_error("Neon Realtime is not configured.", 503)
+        function_request = Request(
+            f"{function_url.rstrip('/')}/live-query",
+            data=b"",
+            headers={"Authorization": f"Bearer {function_token}", "Accept": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(function_request, timeout=8) as response:
+                result = json.loads(response.read())
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            app.logger.exception("Neon Realtime query could not be sealed.")
+            return _json_error("Neon Realtime query could not be prepared.", 502)
+        if not isinstance(result, dict) or "sealedQuery" not in result:
+            app.logger.error("Neon Function returned an unexpected Realtime response.")
+            return _json_error("Neon Realtime returned an unexpected response.", 502)
+        return jsonify({"sealed_query": result["sealedQuery"], "realtime_url": realtime_url})
 
     @app.cli.command("create-admin")
     @click.option("--name", prompt="Administrator name")

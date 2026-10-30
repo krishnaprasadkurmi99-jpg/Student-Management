@@ -37,6 +37,7 @@ tests/
 - Student 360 profiles with contact details, attendance history, grades, fee balances, and attendance/academic achievement badges.
 - Global search across students, courses, assessments, fee records, and academic events; notification summaries and an academic events calendar.
 - CSV student import (up to 500 records per file) and browser print-to-PDF reports.
+- Archive CSV reports in a private Neon Object Storage bucket and download them using expiring links.
 - Validated JSON API with duplicate-email, authentication, and missing-record handling.
 - SQLite by default, or PostgreSQL locally through `CAMPUSLY_DB_*` settings / in deployment via `DATABASE_URL`.
 - Importable Postman collection for API checks and CRUD examples.
@@ -132,6 +133,12 @@ In Vercel **Project Settings → Environment Variables**, set:
 - `SESSION_COOKIE_SECURE=1` for the HTTPS deployment.
 
 The app creates database tables on the first API request rather than while Vercel imports the function. This avoids connecting to the database during the build/import phase. The app accepts `postgresql://` and older `postgres://` URLs and connects using Psycopg 3. Never commit production credentials.
+
+## Neon services
+
+`neon.ts` declares Neon Auth, the private `assets` object-storage bucket, the `hello` Neon Function, and Realtime for preview branches. Run `neon deploy --env .env` to apply the declaration and pull service variables into the ignored `.env` (or `.env.local` if `.env` is absent). Neon Postgres's `DATABASE_URL` takes precedence over local `CAMPUSLY_DB_*` settings.
+
+Campusly continues to use its existing Flask authentication; provisioning Neon Auth does not replace the current login or session model. The Reports page can archive CSV output into the private `assets` bucket; generated download links expire after 15 minutes. The Neon Function provides an authenticated capability endpoint for the dashboard's live student-count subscription and a protected database connectivity check. The browser receives only a sealed aggregate query; the Realtime secret and the app-to-Function token stay server-side. Realtime is enabled for the production branch and preview branches. AI Gateway is not enabled on the Free plan.
 
 For other hosts, the repository includes a `Procfile`; configure the service to install `requirements.txt` and start with `gunicorn backend.app:app`.
 

@@ -1,0 +1,14 @@
+{
+  "scripts": {
+    "build": "python -m compileall -q backend && node --check public/assets/app.js && node --check public/assets/auth.js && esbuild frontend/realtime.js --bundle --format=esm --outfile=public/assets/realtime.bundle.js"
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.6",
+    "@neon/env": "^1.6.6",
+    "@neon/functions": "^0.11.0",
+    "@neon/realtime": "^0.1.2",
+    "esbuild": "^0.28.2",
+    "hono": "^4.13.14",
+    "pg": "^8.23.1"
+  }
+}

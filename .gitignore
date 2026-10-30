@@ -3,6 +3,9 @@
 __pycache__/
 *.py[cod]
 .env
+.env.local
 instance/
 *.db
 .pytest_cache/
+.neon
+node_modules/
