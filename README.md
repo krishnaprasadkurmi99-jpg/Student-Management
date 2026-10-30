@@ -1,6 +1,6 @@
 # Campusly Student Management System
 
-A student directory with a responsive HTML/CSS/JavaScript frontend, a Python Flask REST API, and SQLite for local development. The same SQLAlchemy data model can use a managed PostgreSQL database when deployed.
+A student directory with a responsive HTML/CSS/JavaScript frontend and a Python Flask REST API. SQLAlchemy supports SQLite for default local development and PostgreSQL for local or deployed use.
 
 ## Project structure
 
@@ -38,7 +38,7 @@ tests/
 - Global search across students, courses, assessments, fee records, and academic events; notification summaries and an academic events calendar.
 - CSV student import (up to 500 records per file) and browser print-to-PDF reports.
 - Validated JSON API with duplicate-email, authentication, and missing-record handling.
-- SQLite locally; PostgreSQL in deployment via `DATABASE_URL`.
+- SQLite by default, or PostgreSQL locally through `CAMPUSLY_DB_*` settings / in deployment via `DATABASE_URL`.
 - Importable Postman collection for API checks and CRUD examples.
 
 ## Run locally
@@ -49,12 +49,28 @@ Python 3.10 or later is recommended.
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+notepad .env
+```
+
+In `.env`, set `CAMPUSLY_DB_PASSWORD` to the password configured for the local PostgreSQL `postgres` user. Keep `.env` private; it is ignored by Git. Do not put the password in source code or commit it. The checked-in `.env.example` contains no credentials.
+
+Before creating or changing tables, inspect the existing `campusly` schema using pgAdmin or a read-only `psql` query. For PostgreSQL 18 installed in the default Windows location:
+
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h localhost -p 5432 -U postgres -d campusly -W -c "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY table_schema, table_name;"
+```
+
+`-W` prompts for the PostgreSQL password without putting it in the command. Review any existing tables before initialization. This project has no Alembic/Flask-Migrate history; its existing `init-db` command uses SQLAlchemy `db.create_all()`, which creates missing tables but does not migrate existing columns. Only after confirming the schema is empty or compatible, initialize with:
+
+```powershell
+python -m flask --app backend.app init-db
 python backend\app.py
 ```
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000). On first run, create the initial administrator account in the browser. Choose a unique email address and a password of at least 12 characters. The password is stored as a secure hash. Subsequent visits show the sign-in page.
 
-The local SQLite database is created on the first API request. The academic-events feature adds one table through the app's existing `db.create_all()` initialization; existing student records and tables are unchanged. To initialize explicitly, run `flask --app backend.app init-db`. The root `app.py` remains a compatibility entry point, so `python app.py` works too. To create another administrator from the command line, run `flask --app backend.app create-admin`; the command prompts for account details and a password.
+If you prefer SQLite, omit `CAMPUSLY_DB_NAME` and `DATABASE_URL`; the local SQLite database is created on the first API request. The academic-events feature adds one table through the app's existing `db.create_all()` initialization. The root `app.py` remains a compatibility entry point, so `python app.py` works too. To create another administrator from the command line, run `python -m flask --app backend.app create-admin`; the command prompts for account details and a password.
 
 Set `SECRET_KEY` to a long, random secret in deployment so sessions remain secure across restarts. On HTTPS deployments also set `SESSION_COOKIE_SECURE=1`. Keep both values private; do not commit them.
 

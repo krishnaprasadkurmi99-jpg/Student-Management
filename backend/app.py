@@ -10,11 +10,14 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import UniqueConstraint, case, func, or_
+from sqlalchemy import URL, UniqueConstraint, case, func, or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 db = SQLAlchemy()
 
@@ -141,26 +144,44 @@ class AcademicEvent(db.Model):
 
 
 def _database_url():
-    url = os.environ.get("DATABASE_URL")
-
-    if not url:
-        return "sqlite:///student_management.db"
-
-    if url.startswith("postgres://"):
-        return url.replace(
-            "postgres://",
-            "postgresql+psycopg://",
-            1
+    local_database = os.environ.get("CAMPUSLY_DB_NAME", "").strip()
+    if local_database:
+        username = os.environ.get("CAMPUSLY_DB_USER", "").strip()
+        password = os.environ.get("CAMPUSLY_DB_PASSWORD", "")
+        host = os.environ.get("CAMPUSLY_DB_HOST", "").strip()
+        port = os.environ.get("CAMPUSLY_DB_PORT", "").strip()
+        missing = [
+            name for name, value in (
+                ("CAMPUSLY_DB_USER", username),
+                ("CAMPUSLY_DB_PASSWORD", password),
+                ("CAMPUSLY_DB_HOST", host),
+                ("CAMPUSLY_DB_PORT", port),
+            ) if not value
+        ]
+        if missing:
+            raise RuntimeError(f"Local PostgreSQL configuration is incomplete: {', '.join(missing)}.")
+        try:
+            port_number = int(port)
+        except ValueError as error:
+            raise RuntimeError("CAMPUSLY_DB_PORT must be a valid port number.") from error
+        return URL.create(
+            "postgresql+psycopg",
+            username=username,
+            password=password,
+            host=host,
+            port=port_number,
+            database=local_database,
         )
 
-    if url.startswith("postgresql://"):
-        return url.replace(
-            "postgresql://",
-            "postgresql+psycopg://",
-            1
-        )
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if url:
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+psycopg://", 1)
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+psycopg://", 1)
+        return url
 
-    return url
+    return "sqlite:///student_management.db"
 
 def _parse_date(value, field, required=True):
     if not value and not required:

@@ -1,6 +1,6 @@
 import pytest
 
-from backend.app import create_app, db
+from backend.app import _database_url, create_app, db
 
 
 @pytest.fixture
@@ -45,6 +45,33 @@ def student_payload(email="alex@example.com"):
         "enrollment_date": "2025-09-01",
         "status": "Active",
     }
+
+
+def test_local_postgres_configuration_builds_safe_url(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql://another-host/not-campusly")
+    monkeypatch.setenv("CAMPUSLY_DB_HOST", "localhost")
+    monkeypatch.setenv("CAMPUSLY_DB_PORT", "5432")
+    monkeypatch.setenv("CAMPUSLY_DB_NAME", "campusly")
+    monkeypatch.setenv("CAMPUSLY_DB_USER", "postgres")
+    monkeypatch.setenv("CAMPUSLY_DB_PASSWORD", "p@ss/word")
+
+    url = _database_url()
+
+    assert url.drivername == "postgresql+psycopg"
+    assert url.username == "postgres"
+    assert url.password == "p@ss/word"
+    assert url.host == "localhost"
+    assert url.port == 5432
+    assert url.database == "campusly"
+
+
+def test_local_postgres_configuration_does_not_fall_back_to_sqlite(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("CAMPUSLY_DB_NAME", "campusly")
+    monkeypatch.delenv("CAMPUSLY_DB_PASSWORD", raising=False)
+
+    with pytest.raises(RuntimeError, match="CAMPUSLY_DB_PASSWORD"):
+        _database_url()
 
 
 def create_course(client, name="Computer Science"):
