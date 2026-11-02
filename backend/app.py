@@ -475,6 +475,48 @@ def create_app(test_config=None):
             return _json_error("Sign in to continue.", 401)
         return jsonify({"user": {"name": user.name, "email": user.email}, "csrf_token": _csrf_token()})
 
+    @app.get("/api/admins")
+    def list_admins():
+        admins = User.query.order_by(User.created_at.desc(), User.id.desc()).all()
+        return jsonify({"admins": [{
+            "id": admin.id,
+            "name": admin.name,
+            "email": admin.email,
+            "created_at": admin.created_at.isoformat(),
+        } for admin in admins]})
+
+    @app.post("/api/admins")
+    def create_admin():
+        data = _json_object_body()
+        if data is None:
+            return _json_error("Request body must be a JSON object.", 400)
+        name = str(data.get("name", "")).strip()
+        email = str(data.get("email", "")).strip().lower()
+        password = data.get("password", "")
+        if not name or len(name) > 100:
+            return _json_error("Enter an administrator name (up to 100 characters).", 400)
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            return _json_error("Enter a valid email address.", 400)
+        if not isinstance(password, str) or len(password) < 12:
+            return _json_error("Choose a password with at least 12 characters.", 400)
+        admin = User(
+            name=name,
+            email=email,
+            password_hash=generate_password_hash(password),
+        )
+        db.session.add(admin)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return _json_error("An account with this email already exists.", 409)
+        return jsonify({"admin": {
+            "id": admin.id,
+            "name": admin.name,
+            "email": admin.email,
+            "created_at": admin.created_at.isoformat(),
+        }}), 201
+
     @app.get("/api/stats")
     def stats():
         return jsonify({

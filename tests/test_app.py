@@ -1,6 +1,6 @@
 import pytest
 
-from backend.app import _database_url, create_app, db
+from backend.app import User, _database_url, create_app, db
 
 
 @pytest.fixture
@@ -137,6 +137,75 @@ def test_authentication_and_csrf(app):
     assert login.status_code == 200
     assert login.json["user"]["name"] == "First Admin"
     assert anonymous.post("/api/courses", json={"name": "No token"}).status_code == 400
+
+
+def test_admin_accounts_require_an_authenticated_session(client, app):
+    anonymous = app.test_client()
+
+    assert anonymous.get("/api/admins").status_code == 401
+    assert anonymous.post("/api/admins", json={}).status_code == 401
+
+
+def test_admin_creation_requires_csrf_and_is_available_in_dashboard(client):
+    assert b'data-view="administrators"' in client.get("/").data
+    assert b'id="admin-form"' in client.get("/").data
+    response = client.post(
+        "/api/admins",
+        json={
+            "name": "New Admin",
+            "email": "new-admin@example.com",
+            "password": "another-secure-password",
+        },
+        headers={"X-CSRF-Token": ""},
+    )
+
+    assert response.status_code == 400
+    assert response.json["error"] == "Invalid or missing CSRF token."
+
+
+def test_authenticated_admin_can_create_admin_account(client, app):
+    response = client.post("/api/admins", json={
+        "name": "New Admin",
+        "email": "new-admin@example.com",
+        "password": "another-secure-password",
+    })
+
+    assert response.status_code == 201
+    assert response.json["admin"]["name"] == "New Admin"
+    assert response.json["admin"]["email"] == "new-admin@example.com"
+    with app.app_context():
+        admin = User.query.filter_by(email="new-admin@example.com").one()
+        assert admin.password_hash != "another-secure-password"
+        assert len(admin.password_hash) > 50
+
+    admins = client.get("/api/admins").json["admins"]
+    assert admins[0]["email"] == "new-admin@example.com"
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"name": "", "email": "valid@example.com", "password": "a-very-secure-password"}, "administrator name"),
+        ({"name": "Admin", "email": "not-an-email", "password": "a-very-secure-password"}, "valid email"),
+        ({"name": "Admin", "email": "valid@example.com", "password": "short"}, "12 characters"),
+    ],
+)
+def test_admin_account_creation_validates_input(client, payload, message):
+    response = client.post("/api/admins", json=payload)
+
+    assert response.status_code == 400
+    assert message in response.json["error"]
+
+
+def test_admin_account_creation_rejects_duplicate_email(client):
+    response = client.post("/api/admins", json={
+        "name": "Another Admin",
+        "email": " ADMIN@example.com ",
+        "password": "another-secure-password",
+    })
+
+    assert response.status_code == 409
+    assert "already exists" in response.json["error"]
 
 
 def test_vercel_requires_a_stable_session_secret(monkeypatch):

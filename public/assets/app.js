@@ -7,7 +7,7 @@ const studentModal = document.querySelector("#student-modal");
 const studentForm = document.querySelector("#student-form");
 const searchInput = document.querySelector("#student-search");
 const statusFilter = document.querySelector("#status-filter");
-const viewNames = ["overview", "students", "courses", "attendance", "grades", "fees", "reports"];
+const viewNames = ["overview", "students", "courses", "attendance", "grades", "fees", "reports", "administrators"];
 let students = [];
 let courses = [];
 let csrfToken = "";
@@ -371,6 +371,20 @@ async function loadFees() {
   } catch (error) { feeList.innerHTML = `<tr><td class="error-cell" colspan="8">${escapeHtml(error.message)}</td></tr>`; }
 }
 
+async function loadAdmins() {
+  const list = document.querySelector("#admin-list");
+  try {
+    const result = await api("/api/admins");
+    document.querySelector("#admin-count").textContent = result.admins.length;
+    list.innerHTML = result.admins.length ? result.admins.map((admin) => `
+      <tr><td><strong>${escapeHtml(admin.name)}</strong></td><td>${escapeHtml(admin.email)}</td>
+      <td>${new Date(admin.created_at).toLocaleDateString()}</td></tr>`).join("")
+      : '<tr><td class="empty-cell" colspan="3"><strong>No administrators found</strong></td></tr>';
+  } catch (error) {
+    list.innerHTML = `<tr><td class="error-cell" colspan="3">${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
 function showView(view) {
   const activeView = viewNames.includes(view) ? view : "overview";
   for (const name of viewNames) {
@@ -389,6 +403,7 @@ function showView(view) {
   if (activeView === "attendance") loadAttendance();
   if (activeView === "grades") loadGrades();
   if (activeView === "fees") loadFees();
+  if (activeView === "administrators") loadAdmins();
 }
 
 function openStudentModal(student = null) {
@@ -661,6 +676,27 @@ document.querySelector("#save-attendance").addEventListener("click", async () =>
 document.querySelector("#logout-button").addEventListener("click", async () => {
   try { await api("/api/auth/logout", { method: "POST" }); window.location.replace("/login"); }
   catch (error) { showToast(error.message, true); }
+});
+
+document.querySelector("#admin-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('[type="submit"]');
+  button.disabled = true;
+  document.querySelector("#admin-form-error").textContent = "";
+  try {
+    await api("/api/admins", {
+      method: "POST",
+      body: JSON.stringify(Object.fromEntries(new FormData(form))),
+    });
+    form.reset();
+    showToast("Administrator account created.");
+    await loadAdmins();
+  } catch (error) {
+    document.querySelector("#admin-form-error").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 });
 
 document.querySelector("#today-label").textContent = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });

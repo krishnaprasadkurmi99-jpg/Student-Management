@@ -26,6 +26,7 @@ tests/
 
 - Add, edit, view, search, filter, and delete student records.
 - First-run administrator setup, secure sign-in/sign-out, hashed passwords, and CSRF-protected API writes.
+- Secure administrator account creation from the signed-in workspace.
 - Separate overview, student, independent course, attendance, grades, fees, and reports pages.
 - Create, edit, and delete courses. Enrollments must use a course in the course catalog.
 - Mark attendance by date (Present, Absent, Late, or Excused), and clear or update a mark.
@@ -89,6 +90,8 @@ Base URL: `http://127.0.0.1:5000`
 | `POST` | `/api/auth/login` | Sign in |
 | `GET` | `/api/auth/me` | Get the current account and CSRF token |
 | `POST` | `/api/auth/logout` | Sign out |
+| `GET` | `/api/admins` | List administrator accounts (signed-in administrators only) |
+| `POST` | `/api/admins` | Create an administrator account (signed-in administrators only) |
 | `GET` | `/api/stats` | Dashboard totals |
 | `GET` | `/api/dashboard` | Dashboard metrics, charts, insights, recent academic records, attention list, and upcoming events |
 | `GET` | `/api/search?q=<term>` | Search students and courses |
@@ -109,6 +112,8 @@ Base URL: `http://127.0.0.1:5000`
 | `GET` | `/api/reports/{students,courses,attendance,grades,fees}.csv` | Download CSV reports |
 
 All `/api` endpoints except health, auth status, first-admin setup, and sign-in require a signed-in administrator. Send the session cookie and `X-CSRF-Token` header with every `POST`, `PUT`, and `DELETE`. Fetch the token from `/api/auth/status` before setup or from `/api/auth/me` after sign-in.
+
+Additional administrator accounts can be created from the **Administrators** section in the signed-in dashboard. Public administrator registration is disabled; the initial account is created through first-run setup.
 
 Student creation requires `first_name`, `last_name`, `email`, `course` (an existing course name), `enrollment_date` (`YYYY-MM-DD`), and `status` (`Active`, `Graduated`, or `On leave`). `phone`, `date_of_birth`, and `address` are optional. Grades use a non-negative score that cannot exceed the maximum. Fee payments are manually recorded; paid amounts cannot exceed the fee total. Validation errors use status `400`, duplicate records use `409`, and missing records use `404`.
 

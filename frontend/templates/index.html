@@ -29,6 +29,8 @@
         <a class="nav-link" href="#fees" data-view="fees"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg>Fees</a>
         <div class="nav-section-label">INSIGHTS</div>
         <a class="nav-link" href="#reports" data-view="reports"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18M18 17V9M13 17V5M8 17v-3"/></svg>Reports</a>
+        <div class="nav-section-label">ADMINISTRATION</div>
+        <a class="nav-link" href="#administrators" data-view="administrators"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM20 8v6M23 11h-6"/></svg>Administrators</a>
       </nav>
       <div class="sidebar-bottom">
         <div class="help-card">
@@ -209,6 +211,41 @@
             <div class="report-item"><a class="report-card" href="/api/reports/fees.csv"><span class="report-icon">$</span><span><strong>Fee balances</strong><small>Amounts, payments and due dates</small></span><b>↓</b></a><button class="secondary-button archive-report" data-report="fees" type="button">Archive in Neon</button></div>
           </div>
           <p id="report-archive-status" class="footer-note" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="page-view" id="administrators-view" hidden>
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow"><span class="eyebrow-dot"></span> WORKSPACE ACCESS</div>
+              <h1>Administrators <span class="heading-count" id="admin-count">0</span></h1>
+              <p class="page-subtitle">Create administrator accounts for trusted members of your team.</p>
+            </div>
+          </div>
+          <section class="directory-card admin-create-card" aria-labelledby="admin-form-title">
+            <div class="directory-heading">
+              <div><h2 id="admin-form-title">Add an administrator</h2><p>New administrators can sign in and manage all student records.</p></div>
+            </div>
+            <form id="admin-form" class="admin-form">
+              <div class="form-grid">
+                <label>Name <span>*</span><input name="name" required maxlength="100" autocomplete="name"></label>
+                <label>Email address <span>*</span><input name="email" type="email" required maxlength="254" autocomplete="email"></label>
+                <label>Password <span>*</span><input name="password" type="password" required minlength="12" autocomplete="new-password" aria-describedby="admin-password-hint"></label>
+                <p class="admin-password-hint" id="admin-password-hint">Use at least 12 characters. Share the password securely with the new administrator.</p>
+              </div>
+              <div class="form-error" id="admin-form-error" role="alert"></div>
+              <div class="modal-actions"><button class="primary-button" type="submit">Create administrator</button></div>
+            </form>
+          </section>
+          <section class="directory-card admin-list-card" aria-label="Administrator accounts">
+            <div class="directory-heading"><div><h2>Administrator accounts</h2><p>Everyone listed here has access to this workspace.</p></div></div>
+            <div class="table-scroll">
+              <table>
+                <thead><tr><th>NAME</th><th>EMAIL</th><th>ADDED</th></tr></thead>
+                <tbody id="admin-list"><tr><td class="loading-cell" colspan="3"><span class="loading-spinner"></span> Loading administrators...</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+          <footer class="page-footer">Only signed-in administrators can create additional accounts.</footer>
         </section>
       </div>
     </main>
