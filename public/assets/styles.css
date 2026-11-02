@@ -381,6 +381,10 @@ td { color: #5f6b60; font-size: 11px; }
 .auth-submit:disabled { cursor: wait; opacity: .7; }
 .auth-submit span { font-size: 17px; }
 .auth-error { min-height: 17px; color: #ae4c43; font-size: 10px; }
+.auth-switch { margin: 15px 0 0; color: #818a7e; font-size: 10px; text-align: center; }
+.auth-switch[hidden] { display: none; }
+.auth-switch button { border: 0; background: transparent; padding: 0; color: #6655d8; font-size: inherit; font-weight: 700; }
+.auth-switch button:hover { text-decoration: underline; }
 .auth-security { margin-top: 22px; color: #8e978b; font-size: 9px; }
 .auth-orbit { position: absolute; width: 280px; height: 280px; border: 1px solid #879d6b12; border-radius: 50%; }
 .auth-orbit-one { right: -210px; bottom: -180px; box-shadow: 0 0 0 26px #879d6b08, 0 0 0 56px #879d6b06; }

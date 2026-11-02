@@ -25,7 +25,7 @@ tests/
 ## Features
 
 - Add, edit, view, search, filter, and delete student records.
-- First-run administrator setup, secure sign-in/sign-out, hashed passwords, and CSRF-protected API writes.
+- Public administrator sign-up and sign-in, secure sign-out, hashed passwords, and CSRF-protected API writes.
 - Secure administrator account creation from the signed-in workspace.
 - Separate overview, student, independent course, attendance, grades, fees, and reports pages.
 - Create, edit, and delete courses. Enrollments must use a course in the course catalog.
@@ -87,6 +87,7 @@ Base URL: `http://127.0.0.1:5000`
 | `GET` | `/api/health` | Health check |
 | `GET` | `/api/auth/status` | Check whether first-admin setup is required and obtain a CSRF token |
 | `POST` | `/api/auth/setup` | Create the first administrator |
+| `POST` | `/api/auth/register` | Publicly create an administrator account |
 | `POST` | `/api/auth/login` | Sign in |
 | `GET` | `/api/auth/me` | Get the current account and CSRF token |
 | `POST` | `/api/auth/logout` | Sign out |
@@ -111,9 +112,9 @@ Base URL: `http://127.0.0.1:5000`
 | `PUT`, `DELETE` | `/api/fees/<id>` | Update amount paid or delete a fee record |
 | `GET` | `/api/reports/{students,courses,attendance,grades,fees}.csv` | Download CSV reports |
 
-All `/api` endpoints except health, auth status, first-admin setup, and sign-in require a signed-in administrator. Send the session cookie and `X-CSRF-Token` header with every `POST`, `PUT`, and `DELETE`. Fetch the token from `/api/auth/status` before setup or from `/api/auth/me` after sign-in.
+All `/api` endpoints except health, auth status, first-admin setup, public registration, and sign-in require a signed-in administrator. Send the session cookie and `X-CSRF-Token` header with every `POST`, `PUT`, and `DELETE`. Fetch the token from `/api/auth/status` before setup, registration, or sign-in, or from `/api/auth/me` after sign-in.
 
-Additional administrator accounts can be created from the **Administrators** section in the signed-in dashboard. Public administrator registration is disabled; the initial account is created through first-run setup.
+The sign-in page offers both **Sign in** and **Create account**. Public registration creates full administrator accounts without email verification or an invitation. Anyone can register and then view or change all workspace student records, grades, attendance, and fees. Only enable this for a workspace where that access is intended. Signed-in administrators can also add accounts from the **Administrators** dashboard section.
 
 Student creation requires `first_name`, `last_name`, `email`, `course` (an existing course name), `enrollment_date` (`YYYY-MM-DD`), and `status` (`Active`, `Graduated`, or `On leave`). `phone`, `date_of_birth`, and `address` are optional. Grades use a non-negative score that cannot exceed the maximum. Fee payments are manually recorded; paid amounts cannot exceed the fee total. Validation errors use status `400`, duplicate records use `409`, and missing records use `404`.
 

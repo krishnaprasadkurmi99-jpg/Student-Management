@@ -139,6 +139,72 @@ def test_authentication_and_csrf(app):
     assert anonymous.post("/api/courses", json={"name": "No token"}).status_code == 400
 
 
+def test_public_registration_creates_admin_and_signs_them_in(app):
+    browser = app.test_client()
+    login_page = browser.get("/login")
+    csrf_token = browser.get("/api/auth/status").json["csrf_token"]
+    response = browser.post(
+        "/api/auth/register",
+        json={
+            "name": "Public Admin",
+            "email": "public-admin@example.com",
+            "password": "a-public-secure-password",
+        },
+        headers={"X-CSRF-Token": csrf_token},
+    )
+
+    assert response.status_code == 201
+    assert b'id="auth-toggle"' in login_page.data
+    assert b"Create account" in login_page.data
+    assert response.json["user"] == {
+        "name": "Public Admin",
+        "email": "public-admin@example.com",
+    }
+    assert browser.get("/api/auth/me").json["user"]["email"] == "public-admin@example.com"
+    assert browser.get("/").status_code == 200
+
+
+def test_public_registration_requires_csrf_and_valid_input(app):
+    browser = app.test_client()
+    browser.get("/api/auth/status")
+
+    missing_csrf = browser.post(
+        "/api/auth/register",
+        json={
+            "name": "Public Admin",
+            "email": "public-admin@example.com",
+            "password": "a-public-secure-password",
+        },
+    )
+    invalid_password = browser.post(
+        "/api/auth/register",
+        json={
+            "name": "Public Admin",
+            "email": "public-admin@example.com",
+            "password": "short",
+        },
+        headers={"X-CSRF-Token": browser.get("/api/auth/status").json["csrf_token"]},
+    )
+
+    assert missing_csrf.status_code == 400
+    assert invalid_password.status_code == 400
+    assert "12 characters" in invalid_password.json["error"]
+
+
+def test_public_registration_rejects_duplicate_email(client):
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "name": "Duplicate Admin",
+            "email": " ADMIN@example.com ",
+            "password": "a-public-secure-password",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "already exists" in response.json["error"]
+
+
 def test_admin_accounts_require_an_authenticated_session(client, app):
     anonymous = app.test_client()
 

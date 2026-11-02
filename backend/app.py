@@ -358,6 +358,7 @@ def create_app(test_config=None):
             "/api/auth/status",
             "/api/auth/setup",
             "/api/auth/login",
+            "/api/auth/register",
         } and not session.get("user_id"):
             return None
         if database_initialized:
@@ -377,7 +378,7 @@ def create_app(test_config=None):
     def protect_api():
         public = {
             "/login", "/api/health", "/api/auth/status",
-            "/api/auth/setup", "/api/auth/login",
+            "/api/auth/setup", "/api/auth/login", "/api/auth/register",
         }
         if request.path.startswith("/static/") or request.path in public:
             return None
@@ -461,6 +462,38 @@ def create_app(test_config=None):
         session["user_id"] = user.id
         _csrf_token()
         return jsonify({"user": {"name": user.name, "email": user.email}, "csrf_token": session["csrf_token"]})
+
+    @app.post("/api/auth/register")
+    def register_admin():
+        data = _json_object_body()
+        if data is None:
+            return _json_error("Request body must be a JSON object.", 400)
+        supplied = request.headers.get("X-CSRF-Token", "")
+        if not supplied or not secrets.compare_digest(supplied, session.get("csrf_token", "")):
+            return _json_error("Invalid or missing CSRF token.", 400)
+        name = str(data.get("name", "")).strip()
+        email = str(data.get("email", "")).strip().lower()
+        password = data.get("password", "")
+        if not name or len(name) > 100:
+            return _json_error("Enter an administrator name (up to 100 characters).", 400)
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            return _json_error("Enter a valid email address.", 400)
+        if not isinstance(password, str) or len(password) < 12:
+            return _json_error("Choose a password with at least 12 characters.", 400)
+        user = User(name=name, email=email, password_hash=generate_password_hash(password))
+        db.session.add(user)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return _json_error("An account with this email already exists.", 409)
+        session.clear()
+        session["user_id"] = user.id
+        _csrf_token()
+        return jsonify({
+            "user": {"name": user.name, "email": user.email},
+            "csrf_token": session["csrf_token"],
+        }), 201
 
     @app.post("/api/auth/logout")
     def logout():
