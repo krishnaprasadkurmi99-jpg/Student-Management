@@ -15,7 +15,7 @@ body { margin: 0; background: var(--page); color: var(--ink); font-family: "DM S
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 .app-shell { min-height: 100vh; }
-.sidebar { position: fixed; inset: 0 auto 0 0; z-index: 3; display: flex; width: 244px; flex-direction: column; border-right: 1px solid #eceef2; background: #fff; padding: 27px 19px 16px; }
+.sidebar { position: fixed; inset: 0 auto 0 0; z-index: 3; display: flex; width: 244px; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid #eceef2; background: #fff; padding: 27px 19px 16px; }
 .brand { display: flex; align-items: center; gap: 10px; color: #252e40; font-family: Manrope, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -1px; text-decoration: none; }
 .brand-mark { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 10px 10px 10px 3px; background: var(--purple); color: #fff; font-size: 17px; }
 .brand-dot { color: #8575ee; }
@@ -25,7 +25,7 @@ button { cursor: pointer; }
 .nav-link.active { background: #f2f0ff; color: var(--purple); font-weight: 700; }
 .nav-icon { width: 17px; font-size: 16px; text-align: center; }
 .nav-count { margin-left: auto; border-radius: 5px; background: #e7e2ff; padding: 2px 6px; font-size: 10px; }
-.sidebar-bottom { margin-top: auto; }
+.sidebar-bottom { flex-shrink: 0; margin-top: auto; }
 .help-card { border: 1px solid #f0eef9; border-radius: 10px; background: linear-gradient(145deg, #fbfaff, #f8f6ff); padding: 14px; }
 .help-icon { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 8px; background: #eeeaff; color: var(--purple); }
 .help-card strong { display: block; margin-top: 11px; font-size: 12px; }
