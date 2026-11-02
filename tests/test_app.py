@@ -54,6 +54,13 @@ def test_database_url_takes_precedence_over_local_postgres_configuration(monkeyp
     assert _database_url() == "postgresql+psycopg://neon-host/neon-db"
 
 
+def test_database_engine_checks_connections_before_reuse(app):
+    assert app.config["SQLALCHEMY_ENGINE_OPTIONS"] == {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+    }
+
+
 def test_local_postgres_configuration_builds_safe_url(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "")
     monkeypatch.setenv("CAMPUSLY_DB_HOST", "localhost")
